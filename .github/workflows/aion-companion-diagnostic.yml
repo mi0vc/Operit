@@ -47,12 +47,12 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: '21'
           cache: gradle
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: '22'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
       - name: Install Android SDK, NDK and CMake
@@ -67,8 +67,8 @@ jobs:
             "cmake;${ANDROID_CMAKE_VERSION}"
       - name: Download and prepare Android dependencies
         run: |
-          bash ci/script/download_android_dependencies.sh full "$MANUAL_DEPS_DIR"
-          python3 ci/script/prepare_android_dependencies.py \
+          timeout --signal=TERM --kill-after=60s 20m bash ci/script/download_android_dependencies.sh full "$MANUAL_DEPS_DIR"
+          timeout --signal=TERM --kill-after=60s 10m python3 ci/script/prepare_android_dependencies.py \
             --profile full \
             --archives "$MANUAL_DEPS_DIR" \
             --repository "$GITHUB_WORKSPACE"
@@ -76,28 +76,32 @@ jobs:
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API_LEVEL}-clang"
-          rustup toolchain install "$RUST_VERSION" --profile minimal
+          timeout --signal=TERM --kill-after=60s 10m rustup toolchain install "$RUST_VERSION" --profile minimal
           rustup target add --toolchain "$RUST_VERSION" aarch64-linux-android
-          cargo +"$RUST_VERSION" build --manifest-path tools/native_ripgrep/Cargo.toml --release --target aarch64-linux-android --locked
+          timeout --signal=TERM --kill-after=60s 15m cargo +"$RUST_VERSION" build --manifest-path tools/native_ripgrep/Cargo.toml --release --target aarch64-linux-android --locked
           install -Dm755 tools/native_ripgrep/target/aarch64-linux-android/release/liboperit_ripgrep.so app/src/main/jniLibs/arm64-v8a/liboperit_ripgrep.so
       - name: Install JavaScript dependencies
         run: |
-          npm install -g pnpm@10.34.5
-          npm ci --no-audit --no-fund
-          npm --prefix web-chat ci --no-audit --no-fund
+          timeout --signal=TERM --kill-after=60s 15m npm install -g pnpm@10.34.5
+          timeout --signal=TERM --kill-after=60s 15m npm ci --no-audit --no-fund
+          timeout --signal=TERM --kill-after=60s 15m npm --prefix web-chat ci --no-audit --no-fund
       - name: Build WebChat and ToolPkg assets
         run: |
-          npm run build:webchat
-          npm run build:examples:github
-          python3 tools/example_packages/sync_example_packages.py --no-hot-reload
+          timeout --signal=TERM --kill-after=60s 10m npm run build:webchat
+          timeout --signal=TERM --kill-after=60s 10m npm run build:examples:github
+          timeout --signal=TERM --kill-after=60s 10m python3 tools/example_packages/sync_example_packages.py --no-hot-reload
       - name: Configure Android SDK
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+      - name: Gradle environment
+        run: ./gradlew --version
+      - name: Gradle configuration smoke test
+        run: timeout --signal=TERM --kill-after=60s 10m ./gradlew :app:help --no-daemon --console=plain --stacktrace --info --max-workers=2
+      - name: Gradle task graph smoke test
+        run: timeout --signal=TERM --kill-after=60s 10m ./gradlew :app:assembleDebug --dry-run --no-daemon --console=plain --stacktrace --info --max-workers=2
       - name: Run bounded Gradle build
         env:
           GRADLE_TASK: ${{ inputs.gradle_task }}
-        run: |
-          chmod +x ./gradlew
-          timeout --signal=TERM --kill-after=5m 45m ./gradlew "${GRADLE_TASK:-assembleDebug}" --stacktrace --no-daemon --console=plain --info --max-workers=2
+        run: timeout --signal=TERM --kill-after=5m 45m ./gradlew "${GRADLE_TASK:-assembleDebug}" --stacktrace --no-daemon --console=plain --info --max-workers=2 --no-parallel
       - name: Upload reports and APKs
         if: always()
         uses: actions/upload-artifact@v4
