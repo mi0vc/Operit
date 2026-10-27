@@ -6,10 +6,9 @@ on:
       gradle_task:
         description: Gradle task
         required: true
-        default: assembleDebug
+        default: ':app:assembleDebug'
         type: choice
         options:
-          - assembleDebug
           - ':app:assembleDebug'
 
 permissions:
@@ -101,9 +100,7 @@ jobs:
       - name: Gradle task graph smoke test
         run: timeout --signal=TERM --kill-after=60s 10m ./gradlew :app:assembleDebug --dry-run --no-daemon --console=plain --stacktrace --info --max-workers=2
       - name: Run bounded Gradle build
-        env:
-          GRADLE_TASK: ${{ inputs.gradle_task }}
-        run: timeout --signal=TERM --kill-after=5m 45m ./gradlew "${GRADLE_TASK:-assembleDebug}" --stacktrace --no-daemon --console=plain --info --max-workers=2 --no-parallel
+        run: timeout --signal=TERM --kill-after=5m 45m ./gradlew :app:assembleDebug --stacktrace --no-daemon --console=plain --info --max-workers=2 --no-parallel
       - name: Upload reports and APKs
         if: always()
         uses: actions/upload-artifact@v4
